@@ -1,0 +1,90 @@
+#include <LiquidCrystal.h>
+
+// Pin-Definitionen
+const int buttonUp = 2;
+const int buttonDown = 3;
+const int buttonToggle = 4;
+const int redPin = 5;
+const int greenPin = 6;
+const int bluePin = 7;
+
+// LCD Pins (RS, E, D4, D5, D6, D7)
+LiquidCrystal lcd(8, 9, 10, 11, 12, 13);
+
+// Zustände
+int alarmDistance = 50; // Startwert in cm
+bool alarmArmed = false;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 200;
+
+void setup() {
+  pinMode(buttonUp, INPUT_PULLUP);
+  pinMode(buttonDown, INPUT_PULLUP);
+  pinMode(buttonToggle, INPUT_PULLUP);
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+
+  lcd.begin(16, 2);
+  Serial.begin(9600);
+
+  updateDisplay();
+  updateLED();
+}
+
+void loop() {
+  if (millis() - lastDebounceTime > debounceDelay) {
+    
+    if (!digitalRead(buttonUp)) {
+      alarmDistance += 10;
+      if (alarmDistance > 200) alarmDistance = 200;
+      updateDisplay();
+      Serial.print("DIST:");
+      Serial.println(alarmDistance);
+      lastDebounceTime = millis();
+    }
+
+    if (!digitalRead(buttonDown)) {
+      alarmDistance -= 10;
+      if (alarmDistance < 10) alarmDistance = 10;
+      updateDisplay();
+      Serial.print("DIST:");
+      Serial.println(alarmDistance);
+      lastDebounceTime = millis();
+    }
+
+    if (!digitalRead(buttonToggle)) {
+      alarmArmed = !alarmArmed;
+      updateDisplay();
+      updateLED();
+      Serial.print("STATUS:");
+      Serial.println(alarmArmed ? "ARMED" : "DISARMED");
+      lastDebounceTime = millis();
+    }
+  }
+}
+
+void updateDisplay() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Status: ");
+  lcd.print(alarmArmed ? "ARMED" : "DISARMED");
+  lcd.setCursor(0, 1);
+  lcd.print("AE: ");
+  lcd.print(alarmDistance);
+  lcd.print(" cm");
+}
+
+void updateLED() {
+  if (alarmArmed) {
+    setRGB(255, 0, 0); // Rot = Aktiviert
+  } else {
+    setRGB(0, 255, 0); // Grün = Deaktiviert
+  }
+}
+
+void setRGB(int r, int g, int b) {
+  analogWrite(redPin, r);
+  analogWrite(greenPin, g);
+  analogWrite(bluePin, b);
+}
