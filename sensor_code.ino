@@ -1,75 +1,56 @@
+#include <SoftwareSerial.h>
 
-const int trigPin = 9;
-const int echoPin = 10;
-const int alarmPin = 6;
+SoftwareSerial terminalSerial(10, 11); // RX, TX
 
-int alarmDistance = 50; // Standard-Entfernung in cm
-bool alarmArmed = false;
+const int trigPin = 6;
+const int echoPin = 7;
+const int ledPin = 13;
 
-String input = "";
+int alarmState = 0;
+int ae = 50;
 
 void setup() {
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
-  pinMode(alarmPin, OUTPUT);
-  
-  Serial.begin(9600); // Serielle Verbindung zum Terminal
+  pinMode(ledPin, OUTPUT);
+  terminalSerial.begin(9600);
+  Serial.begin(9600);
 }
 
 void loop() {
-  readSerialInput();
-  
-  if (alarmArmed) {
-    long distance = measureDistance();
-    
-    if (distance > 0 && distance <= alarmDistance) {
-      digitalWrite(alarmPin, HIGH); // Alarm auslösen
-    } else {
-      digitalWrite(alarmPin, LOW); // Kein Alarm
+  // Empfange Steuerdaten
+  if (terminalSerial.available()) {
+    String input = terminalSerial.readStringUntil('\n');
+    if (input.startsWith("S")) {
+      input.remove(0, 1);
+      int comma = input.indexOf(',');
+      if (comma > 0) {
+        alarmState = input.substring(0, comma).toInt();
+        ae = input.substring(comma + 1).toInt();
+      }
     }
-  } else {
-    digitalWrite(alarmPin, LOW); // Immer aus
   }
 
-  delay(200);
-}
-
-long measureDistance() {
+  // Entfernung messen
+  long duration, distance;
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  
-  long duration = pulseIn(echoPin, HIGH, 30000); // Timeout bei 30ms
-  if (duration == 0) return -1; // Kein Echo
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;
 
-  long distance = duration * 0.034 / 2; // in cm
-  return distance;
-}
+  Serial.print("Distanz: ");
+  Serial.print(distance);
+  Serial.println(" cm");
 
-void readSerialInput() {
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\n') {
-      processMessage(input);
-      input = "";
-    } else {
-      input += c;
-    }
+  // Alarm auslösen wenn aktiv & Abstand zu klein
+  if (alarmState == 2 && distance <= ae) {
+    digitalWrite(ledPin, HIGH);
+  } else {
+    digitalWrite(ledPin, LOW);
   }
-}
 
-void processMessage(String msg) {
-  msg.trim();
-  
-  if (msg.startsWith("DIST:")) {
-    int dist = msg.substring(5).toInt();
-    if (dist >= 10 && dist <= 200) {
-      alarmDistance = dist;
-    }
-  } else if (msg.startsWith("STATUS:")) {
-    String status = msg.substring(7);
-    alarmArmed = (status == "ARMED");
-  }
+  delay(300);
 }
