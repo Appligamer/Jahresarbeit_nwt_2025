@@ -1,109 +1,65 @@
-
-#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
+SoftwareSerial sensorSerial(10, 11); // RX, TX
 
-const int buttonArmPin = 2;
-const int buttonMinusPin = 3;
-const int buttonPlusPin = 4;
-const int redPin = 5;
-const int greenPin = 6;
-const int bluePin = 7;
-
-int alarmDistance = 50;
-bool alarmArmed = false;
-
-bool lastArmState = HIGH;
-bool lastMinusState = HIGH;
-bool lastPlusState = HIGH;
+const int buttonPin = 2;
+const int potPin = A0;
+int alarmState = 0; // 0 = Aus, 1 = Entschärft, 2 = Scharf
+int lastButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
 
 void setup() {
-  pinMode(buttonArmPin, INPUT_PULLUP);
-  pinMode(buttonMinusPin, INPUT_PULLUP);
-  pinMode(buttonPlusPin, INPUT_PULLUP);
-
-  pinMode(redPin, OUTPUT);
-  pinMode(greenPin, OUTPUT);
-  pinMode(bluePin, OUTPUT);
-
+  pinMode(buttonPin, INPUT_PULLUP);
   lcd.init();
   lcd.backlight();
-
+  sensorSerial.begin(9600);
   Serial.begin(9600);
-  updateDisplay();
-  updateRGB();
-  sendStatus();
-  sendDistance();
+  updateLCD();
 }
 
 void loop() {
-  handleButtons();
-  delay(100);
-}
-
-void handleButtons() {
-  bool armState = digitalRead(buttonArmPin);
-  bool minusState = digitalRead(buttonMinusPin);
-  bool plusState = digitalRead(buttonPlusPin);
-
-  if (armState == LOW && lastArmState == HIGH) {
-    alarmArmed = !alarmArmed;
-    updateDisplay();
-    updateRGB();
-    sendStatus();
+  // Knopf einlesen mit Entprellen
+  int reading = digitalRead(buttonPin);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
   }
 
-  if (minusState == LOW && lastMinusState == HIGH) {
-    if (alarmDistance > 10) {
-      alarmDistance -= 10;
-      updateDisplay();
-      sendDistance();
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading == LOW && lastButtonState == HIGH) {
+      alarmState = (alarmState + 1) % 3;
+      updateLCD();
     }
   }
+  lastButtonState = reading;
 
-  if (plusState == LOW && lastPlusState == HIGH) {
-    if (alarmDistance < 200) {
-      alarmDistance += 10;
-      updateDisplay();
-      sendDistance();
-    }
-  }
+  // AE-Wert vom Potentiometer
+  int potValue = analogRead(potPin);       // 0 bis 1023
+  int ae = map(potValue, 0, 1023, 1, 100);  // 1 bis 100 cm
 
-  lastArmState = armState;
-  lastMinusState = minusState;
-  lastPlusState = plusState;
+  // An Sensor senden
+  sensorSerial.print("S");
+  sensorSerial.print(alarmState);
+  sensorSerial.print(",");
+  sensorSerial.println(ae);
+
+  // Status anzeigen
+  lcd.setCursor(0, 1);
+  lcd.print("AE: ");
+  lcd.print(ae);
+  lcd.print(" cm   ");
+
+  delay(500);
 }
 
-void updateDisplay() {
+void updateLCD() {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Status: ");
-  lcd.print(alarmArmed ? "ARMED" : "DISARMED");
-
-  lcd.setCursor(0, 1);
-  lcd.print("Dist: ");
-  lcd.print(alarmDistance);
-  lcd.print(" cm");
-}
-
-void updateRGB() {
-  if (alarmArmed) {
-    digitalWrite(redPin, HIGH);
-    digitalWrite(greenPin, LOW);
-  } else {
-    digitalWrite(redPin, LOW);
-    digitalWrite(greenPin, HIGH);
+  switch (alarmState) {
+    case 0: lcd.print("Status: AUS     "); break;
+    case 1: lcd.print("Status: ENTSCH. "); break;
+    case 2: lcd.print("Status: SCHARF  "); break;
   }
-  digitalWrite(bluePin, LOW);
-}
-
-void sendStatus() {
-  Serial.print("STATUS:");
-  Serial.println(alarmArmed ? "ARMED" : "DISARMED");
-}
-
-void sendDistance() {
-  Serial.print("DIST:");
-  Serial.println(alarmDistance);
 }
